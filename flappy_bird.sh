@@ -1,5 +1,6 @@
 #!/bin/bash
 # 使用 bash 实现的 flappyBird 小游戏
+# tips:此游戏基于某些 b̶u̶g̶ 特性运行，请谨慎修改以下全局变量😇
 # 游戏坐标
 # *--------------------->
 # |                     x
@@ -68,6 +69,7 @@ draw_bird()
     printf " "
     case "$char" in
         ' ')
+        # 空格，提升小鸟高度
         # 终端音效
         echo -e '\a'
         # 输入空格，小鸟上升JUMP个高度
@@ -76,6 +78,12 @@ draw_bird()
         if [[ "$BIRD_Y" -lt "$GAME_START_Y" ]] ; then
             BIRD_Y=$(("$GAME_START_Y"))
         fi
+        ;;
+        'p')
+        # 'p'，暂停游戏，使用read阻塞
+        # 清空输入缓冲区
+        read -e -s -r -t 0.1
+        read -s -r -n 1
         ;;
         *)
         # 其他字符，小鸟下降GRAVITY个高度
@@ -149,9 +157,10 @@ update_pipe()
     if [[ $(("${PIPE_ARR_X[-1]}" + "$PIPE_SPACE")) -lt "$PIPE_START_X" ]] ; then
         generate_pipe
     fi
-    # 缩小管道间距，提高难度
+    # 缩小管道间距，提升管道移动速度，提高难度
     if [[ "$SCORE" -ge 5 && "$PIPE_SPACE" -lt "$PIPE_SPACE_MINI" ]] ; then
         PIPE_SPACE=$(("$PIPE_SHAPE" + 2))
+        PIPE_MOVE_SPEED=$(("$PIPE_MOVE_SPEED" + 2))
     fi
     # 删除过时的管道坐标
     if [[ "${PIPE_ARR_X[0]}" -le "$PIPE_END_X" ]] ; then
@@ -209,7 +218,7 @@ check_collision()
     # 碰撞判断
     # 判断小鸟是否撞到柱子
     if [[ "$BIRD_X" -ge "${PIPE_ARR_X[0]}" && "$BIRD_X" -le $(("${PIPE_ARR_X[0]}" + "$PIPE_WIDTH")) ]] ; then
-        if [[ "$BIRD_Y" -lt "$(("${PIPE_ARR_HEIGHT[0]}" + "$GAME_START_Y"))" || "$BIRD_Y" -gt "$(("${PIPE_ARR_HEIGHT[0]}" + "$PIPE_GAP"))" ]] ; then
+        if [[ "$BIRD_Y" -le "$(("${PIPE_ARR_HEIGHT[0]}" + "$GAME_START_Y" + 1))" || "$BIRD_Y" -gt "$(("${PIPE_ARR_HEIGHT[0]}" + "$PIPE_GAP"))" ]] ; then
             GAME_OVER_FLAG="1"
         fi
     else
@@ -256,8 +265,12 @@ game_over()
         tmp="$SCORE"
         echo "$tmp" > "$file"
     fi
+    # 显示当前分数和历史最高分
     tput cup "$(("$GAME_HEIGHT" / 2 - 2))" "$(("$GAME_WIDTH" / 4))"
     printf 'score:%d  best:%d' "$SCORE" "$tmp"
+    # 重置计分
+    tput cup 0 6
+    printf "%-4d" "0"
     # 重置
     SCORE=0
     GAME_OVER_FLAG=0
@@ -265,8 +278,8 @@ game_over()
     BIRD_Y=$((("$GAME_HEIGHT" / 2) + "$GAME_START_Y"))  #居中（行）
     PIPE_ARR_X=()       # 管道数组，记录每个管道的x坐标
     PIPE_ARR_HEIGHT=()  # 管道数组，记录每个管道的缺口高度
-    PIPE_SHAPE=""
-    PIPE_GAP_SHAPE=""
+    PIPE_SPACE=20
+    PIPE_MOVE_SPEED=2
 }
 
 clear
@@ -280,13 +293,24 @@ draw_border # 绘制游戏的边框
 while :
 do
     # 游戏开始的欢迎界面
-    tput cup "$(("$GAME_HEIGHT" / 2))" "$(("$GAME_WIDTH" / 4))"
-    echo "welecome to play floppybird!"
-    tput cup "$(("$GAME_HEIGHT" / 2 + 1))" "$(("$GAME_WIDTH" / 4 - 10))"
-    read -p "press 'q' to exit, another key to start game!" -s -r -n 1 char
+    tput cup "$(("$GAME_HEIGHT" / 2))" "$(("$GAME_WIDTH" / 4 - 5))"
+    echo "welecome to play floppybird! tips:use 'p' to pause the game"
+    tput cup "$(("$GAME_HEIGHT" / 2 + 1))" "$(("$GAME_WIDTH" / 4 - 15))"
+    read -p "press 'q' to exit, use 's' to change bird skin, another key to start game!" -s -r -n 1 char
     case "$char" in
         'q')
+        # 结束循环，退出游戏
         break
+        ;;
+        's')
+        #设置小鸟的皮肤
+        clean_game
+        tput cup "$(("$GAME_HEIGHT" / 2))" "$(("$GAME_WIDTH" / 4))"
+        read -p "the bird new skin(default '@'):" -r -n 1 char
+        printf "\n"
+        if [[ -n "$char" ]] ; then
+            BIRD="$char"
+        fi
         ;;
         *)
         clean_game
@@ -294,6 +318,8 @@ do
         game_over
         ;;
     esac
+    # 清空输入缓冲区
+    read -e -s -r -t 0.1
 done
 
 # 终端恢复
