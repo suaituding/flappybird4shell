@@ -23,9 +23,10 @@ PIPE_WIDTH=4        # 管道障碍物宽度
 PIPE_HEIGHT_MIN=4   # 上下管道最小高度
 PIPE_GAP=6          # 上下管道的间隔大小
 PIPE_SPACE=20       # 管道间距，控制管道的生成速度
+PIPE_SPACE_MINI=14  # 管道最小间距
 PIPE_MOVE_SPEED=2   # 管道的移动速度
 PIPE_START_X=94     # 管道生成的起始列x坐标
-PIPE_END_X=4        # 管道消失的结束列x坐标
+PIPE_END_X=6        # 管道消失的结束列x坐标
 PIPE_ARR_X=()       # 管道数组，记录每个管道的x坐标
 PIPE_ARR_HEIGHT=()  # 管道数组，记录每个管道的缺口高度
 
@@ -67,7 +68,9 @@ draw_bird()
     printf " "
     case "$char" in
         ' ')
-        # 输入空格，小鸟上升JNMP个高度
+        # 终端音效
+        echo -e '\a'
+        # 输入空格，小鸟上升JUMP个高度
         BIRD_Y=$(("$BIRD_Y" - "$JUMP"))
         # 设置小鸟飞行高度上限
         if [[ "$BIRD_Y" -lt "$GAME_START_Y" ]] ; then
@@ -87,7 +90,7 @@ draw_bird()
 generate_pipe()
 {
     # 随机生成新柱子的高度
-    pipe_height=$((RANDOM % ("$GAME_HEIGHT" - "$PIPE_GAP" - "$PIPE_HEIGHT_MIN" + 1) + "$PIPE_HEIGHT_MIN"))
+    pipe_height=$((RANDOM % ("$GAME_HEIGHT" - "$PIPE_GAP" - (2 * "$PIPE_HEIGHT_MIN") + 1) + "$PIPE_HEIGHT_MIN"))
     PIPE_ARR_X+=("$PIPE_START_X")
     PIPE_ARR_HEIGHT+=("$pipe_height")
 }
@@ -142,6 +145,15 @@ draw_pipe()
 # 更新管道坐标，实现管道的移动，删除过时的管道坐标
 update_pipe()
 {
+    # 管道生成
+    if [[ $(("${PIPE_ARR_X[-1]}" + "$PIPE_SPACE")) -lt "$PIPE_START_X" ]] ; then
+        generate_pipe
+    fi
+    # 缩小管道间距，提高难度
+    if [[ "$SCORE" -ge 5 && "$PIPE_SPACE" -lt "$PIPE_SPACE_MINI" ]] ; then
+        PIPE_SPACE=$(("$PIPE_SHAPE" + 2))
+    fi
+    # 删除过时的管道坐标
     if [[ "${PIPE_ARR_X[0]}" -le "$PIPE_END_X" ]] ; then
         # 截取数组，去除第0个元素
         PIPE_ARR_X=("${PIPE_ARR_X[@]:1}")
@@ -197,7 +209,7 @@ check_collision()
     # 碰撞判断
     # 判断小鸟是否撞到柱子
     if [[ "$BIRD_X" -ge "${PIPE_ARR_X[0]}" && "$BIRD_X" -le $(("${PIPE_ARR_X[0]}" + "$PIPE_WIDTH")) ]] ; then
-        if [[ "$BIRD_Y" -lt "${PIPE_ARR_HEIGHT[0]}" || "$BIRD_Y" -gt "$(("${PIPE_ARR_HEIGHT[0]}" + "$PIPE_GAP"))" ]] ; then
+        if [[ "$BIRD_Y" -lt "$(("${PIPE_ARR_HEIGHT[0]}" + "$GAME_START_Y"))" || "$BIRD_Y" -gt "$(("${PIPE_ARR_HEIGHT[0]}" + "$PIPE_GAP"))" ]] ; then
             GAME_OVER_FLAG="1"
         fi
     else
@@ -208,31 +220,81 @@ check_collision()
     fi
 }
 
+# 正式开始游戏
+play_game()
+{
+    # 提前生成一个柱子，避免后续判断出错
+    generate_pipe
+    # 游戏主循环
+    while [[ "$GAME_OVER_FLAG" -eq 0 ]]
+    do
+        draw_pipe
+        update_pipe
+        draw_bird
+        check_collision
+        sleep 0.4
+    done
+}
+
+# 游戏结束，显示最佳成绩，并保存最佳成绩
+game_over()
+{
+    clean_game
+    tput cup 0 0
+    draw_border
+    # 检测最高分文件是否存在
+    file=highscore.txt
+    if [[ -e "$file" ]] ; then
+        # 若文件存在，比较并更新最高分
+        tmp="$(<"$file")"
+        if [[ "$tmp" -lt "$SCORE" ]] ; then
+            tmp="$SCORE"
+            echo "$tmp" > "$file"
+        fi
+    else
+        # 若文件不存在，将本次分数写入文件
+        tmp="$SCORE"
+        echo "$tmp" > "$file"
+    fi
+    tput cup "$(("$GAME_HEIGHT" / 2 - 2))" "$(("$GAME_WIDTH" / 4))"
+    printf 'score:%d  best:%d' "$SCORE" "$tmp"
+    # 重置
+    SCORE=0
+    GAME_OVER_FLAG=0
+    BIRD_X=$((10 + "$GAME_START_X"))           # 鸟的初始x轴位置（列）
+    BIRD_Y=$((("$GAME_HEIGHT" / 2) + "$GAME_START_Y"))  #居中（行）
+    PIPE_ARR_X=()       # 管道数组，记录每个管道的x坐标
+    PIPE_ARR_HEIGHT=()  # 管道数组，记录每个管道的缺口高度
+    PIPE_SHAPE=""
+    PIPE_GAP_SHAPE=""
+}
+
 clear
 tput civis  # 隐藏光标
 tput cup 0 0
 echo 'score:'"$SCORE"
 tput cup 0 0
 
-# 绘制游戏的边界
-draw_border
+draw_border # 绘制游戏的边框
 
-# 提前生成一个柱子，避免后续判断出错
-generate_pipe
-
-# 游戏主循环
-while [[ "$GAME_OVER_FLAG" -eq 0 ]]
+while :
 do
-    if [[ $(("${PIPE_ARR_X[-1]}" + "$PIPE_SPACE")) -lt "$PIPE_START_X" ]] ; then
-        generate_pipe
-    fi
-    draw_pipe
-    update_pipe
-    draw_bird
-    check_collision
-    sleep 0.4
+    # 游戏开始的欢迎界面
+    tput cup "$(("$GAME_HEIGHT" / 2))" "$(("$GAME_WIDTH" / 4))"
+    echo "welecome to play floppybird!"
+    tput cup "$(("$GAME_HEIGHT" / 2 + 1))" "$(("$GAME_WIDTH" / 4 - 10))"
+    read -p "press 'q' to exit, another key to start game!" -s -r -n 1 char
+    case "$char" in
+        'q')
+        break
+        ;;
+        *)
+        clean_game
+        play_game
+        game_over
+        ;;
+    esac
 done
 
-clean_game
-
+# 终端恢复
 tput reset
