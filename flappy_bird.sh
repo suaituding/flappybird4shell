@@ -35,7 +35,7 @@ GRAVITY=1           # 重力（下落速度）
 JUMP=1              # 每次跳跃的高度
 BIRD="@"            # 鸟🐦的图案
 BIRD_X=$((10 + "$GAME_START_X"))           # 鸟的初始x轴位置（列）
-BIRD_Y=$((("$GAME_HEIGHT" / 2) + "$GAME_START_Y"))  #居中（行）
+BIRD_Y=$((("$GAME_HEIGHT" / 2) + "$GAME_START_Y"))  # 居中（行）
 
 # 绘制游戏边框
 draw_border()
